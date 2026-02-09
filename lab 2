@@ -1,0 +1,273 @@
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <chrono>
+#include <mutex>
+#include <windows.h> // Для кольорового виводу
+
+using namespace std;
+
+// Константи
+const int WIDTH = 100;     // Максимальна координата по осі X
+const int HEIGHT = 30;     // Максимальна координата по осі Y
+const int SPEED = 1;       // Швидкість переміщення
+const int DELAY_MS = 100;  // Затримка між кроками
+
+// М'ютекси для синхронізації
+mutex printMutex;
+mutex consoleMutex;
+
+// Кольори для консолі (Windows)
+enum Color {
+    RED = 12,
+    GREEN = 10,
+    YELLOW = 14,
+    BLUE = 9,
+    MAGENTA = 13,
+    CYAN = 11,
+    WHITE = 15
+};
+
+// Функція для зміни кольору тексту
+void setColor(Color color) {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(hConsole, color);
+}
+
+// Функція для скидання кольору
+void resetColor() {
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleTextAttribute(hConsole, WHITE);
+}
+
+class Fish {
+private:
+    string name;
+    int x, y;
+    int directionX;
+    int directionY;
+    Color color;
+    bool isGoldfish; // true - золота рибка, false - гуппі
+    bool running;
+
+public:
+    Fish(string n, int startX, int startY, int dx, int dy, Color c, bool goldfish)
+        : name(n), x(startX), y(startY), directionX(dx), directionY(dy), 
+          color(c), isGoldfish(goldfish), running(true) {}
+
+    void stop() {
+        running = false;
+    }
+
+    void moveGoldfish() {
+        while (running) {
+            {
+                lock_guard<mutex> lock(printMutex);
+                lock_guard<mutex> consoleLock(consoleMutex);
+                
+                setColor(color);
+                cout << name << " [Goldfish] at X=" << x << ", Y=" << y;
+                resetColor();
+                
+                // Виводимо просторову візуалізацію
+                cout << "  [";
+                for (int i = 0; i < WIDTH; i += 5) {
+                    if (i == x / 5) {
+                        setColor(color);
+                        cout << "F";
+                        resetColor();
+                    } else {
+                        cout << ".";
+                    }
+                }
+                cout << "]" << endl;
+            }
+
+            // Оновлюємо позицію
+            x += directionX * SPEED;
+
+            // Перевіряємо межі та міняємо напрямок
+            if (x >= WIDTH) {
+                x = WIDTH;
+                directionX = -1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    lock_guard<mutex> consoleLock(consoleMutex);
+                    setColor(YELLOW);
+                    cout << name << " reached RIGHT boundary, changing direction!" << endl;
+                    resetColor();
+                }
+            } else if (x <= 0) {
+                x = 0;
+                directionX = 1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    lock_guard<mutex> consoleLock(consoleMutex);
+                    setColor(YELLOW);
+                    cout << name << " reached LEFT boundary, changing direction!" << endl;
+                    resetColor();
+                }
+            }
+
+            // Затримка
+            this_thread::sleep_for(chrono::milliseconds(DELAY_MS));
+        }
+    }
+
+    void moveGuppy() {
+        while (running) {
+            {
+                lock_guard<mutex> lock(printMutex);
+                lock_guard<mutex> consoleLock(consoleMutex);
+                
+                setColor(color);
+                cout << name << " [Guppy] at X=" << x << ", Y=" << y;
+                resetColor();
+                
+                // Виводимо просторову візуалізацію
+                cout << "  [";
+                for (int i = 0; i < HEIGHT; i += 3) {
+                    if (i == y / 3) {
+                        setColor(color);
+                        cout << "F";
+                        resetColor();
+                    } else {
+                        cout << ".";
+                    }
+                }
+                cout << "]" << endl;
+            }
+
+            // Оновлюємо позицію
+            y += directionY * SPEED;
+
+            // Перевіряємо межі та міняємо напрямок
+            if (y >= HEIGHT) {
+                y = HEIGHT;
+                directionY = -1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    lock_guard<mutex> consoleLock(consoleMutex);
+                    setColor(YELLOW);
+                    cout << name << " reached BOTTOM boundary, changing direction!" << endl;
+                    resetColor();
+                }
+            } else if (y <= 0) {
+                y = 0;
+                directionY = 1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    lock_guard<mutex> consoleLock(consoleMutex);
+                    setColor(YELLOW);
+                    cout << name << " reached TOP boundary, changing direction!" << endl;
+                    resetColor();
+                }
+            }
+
+            // Затримка
+            this_thread::sleep_for(chrono::milliseconds(DELAY_MS));
+        }
+    }
+
+    void move() {
+        if (isGoldfish) {
+            moveGoldfish();
+        } else {
+            moveGuppy();
+        }
+    }
+};
+
+void printHeader() {
+    lock_guard<mutex> lock(consoleMutex);
+    setColor(CYAN);
+    cout << "==================================================" << endl;
+    cout << "       SIMULATION: FISH MOVEMENT (THREADED)       " << endl;
+    cout << "==================================================" << endl;
+    cout << "Area size: " << WIDTH << "x" << HEIGHT << endl;
+    cout << "Speed: " << SPEED << " unit per step" << endl;
+    cout << "Delay: " << DELAY_MS << " ms" << endl;
+    cout << "==================================================" << endl;
+    resetColor();
+}
+
+void printLegend() {
+    lock_guard<mutex> lock(consoleMutex);
+    cout << "\nLEGEND:" << endl;
+    setColor(RED); cout << "Red"; resetColor(); cout << " - Goldfish moving right to left" << endl;
+    setColor(GREEN); cout << "Green"; resetColor(); cout << " - Goldfish moving left to right" << endl;
+    setColor(BLUE); cout << "Blue"; resetColor(); cout << " - Guppy moving top to bottom" << endl;
+    setColor(MAGENTA); cout << "Magenta"; resetColor(); cout << " - Guppy moving bottom to top" << endl;
+    cout << "F - Fish position in visualization" << endl;
+    cout << ". - Empty space" << endl;
+    cout << "==================================================" << endl << endl;
+}
+
+int main() {
+    // Налаштовуємо кодування для українських літер
+    SetConsoleOutputCP(1251);
+    SetConsoleCP(1251);
+
+    printHeader();
+    printLegend();
+
+    // Створюємо риб
+    vector<Fish> fishes;
+    
+    // Золоті рибки (рухаються по X)
+    fishes.emplace_back("Goldfish_1", 0, 5, 1, 0, GREEN, true);   // Зелена - рухається праворуч
+    fishes.emplace_back("Goldfish_2", WIDTH, 10, -1, 0, RED, true); // Червона - рухається ліворуч
+    fishes.emplace_back("Goldfish_3", 50, 15, 1, 0, Color(6), true); // Жовта - рухається праворуч
+    
+    // Гуппі (рухаються по Y)
+    fishes.emplace_back("Guppy_1", 20, 0, 0, 1, BLUE, false);      // Синя - рухається вниз
+    fishes.emplace_back("Guppy_2", 50, HEIGHT, 0, -1, MAGENTA, false); // Фіолетова - рухається вгору
+    fishes.emplace_back("Guppy_3", 80, 10, 0, 1, Color(11), false); // Бірюзова - рухається вниз
+
+    // Створюємо потоки
+    vector<thread> threads;
+    for (auto& fish : fishes) {
+        threads.emplace_back(&Fish::move, &fish);
+    }
+
+    {
+        lock_guard<mutex> lock(consoleMutex);
+        setColor(YELLOW);
+        cout << "Simulation started! " << fishes.size() << " fish threads created." << endl;
+        cout << "Press Enter to stop simulation..." << endl;
+        resetColor();
+    }
+
+    // Очікуємо натискання Enter для зупинки
+    cin.get();
+
+    // Зупиняємо всіх риб
+    {
+        lock_guard<mutex> lock(consoleMutex);
+        setColor(YELLOW);
+        cout << "\nStopping all fish threads..." << endl;
+        resetColor();
+    }
+
+    for (auto& fish : fishes) {
+        fish.stop();
+    }
+
+    // Очікуємо завершення всіх потоків
+    for (auto& t : threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    {
+        lock_guard<mutex> lock(consoleMutex);
+        setColor(CYAN);
+        cout << "\n==================================================" << endl;
+        cout << "           SIMULATION COMPLETED SUCCESSFULLY      " << endl;
+        cout << "==================================================" << endl;
+        resetColor();
+    }
+
+    return 0;
+}
