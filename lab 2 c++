@@ -1,0 +1,211 @@
+#include <iostream>
+#include <thread>
+#include <vector>
+#include <chrono>
+#include <mutex>
+#include <atomic>
+
+using namespace std;
+
+const int WIDTH = 100;
+const int HEIGHT = 30;
+const int SPEED = 1;
+const int DELAY_MS = 100;
+
+mutex printMutex;
+atomic<bool> running(true);
+
+class Fish {
+private:
+    string name;
+    int x, y;
+    int directionX;
+    int directionY;
+    bool isGoldfish;
+    
+public:
+    Fish(string n, int startX, int startY, int dx, int dy, bool goldfish)
+        : name(n), x(startX), y(startY), directionX(dx), directionY(dy), 
+          isGoldfish(goldfish) {}
+
+    void moveGoldfish() {
+        while (running) {
+            {
+                lock_guard<mutex> lock(printMutex);
+                cout << name << " [Goldfish] at X=" << x << ", Y=" << y;
+                cout << "  [";
+                for (int i = 0; i < WIDTH; i += 5) {
+                    if (i == x / 5) {
+                        cout << "F";
+                    } else {
+                        cout << ".";
+                    }
+                }
+                cout << "]" << endl;
+            }
+
+            x += directionX * SPEED;
+
+            if (x >= WIDTH) {
+                x = WIDTH;
+                directionX = -1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    cout << "  -> " << name << " reached RIGHT boundary!" << endl;
+                }
+            } else if (x <= 0) {
+                x = 0;
+                directionX = 1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    cout << "  <- " << name << " reached LEFT boundary!" << endl;
+                }
+            }
+
+            this_thread::sleep_for(chrono::milliseconds(DELAY_MS));
+        }
+    }
+
+    void moveGuppy() {
+        while (running) {
+            {
+                lock_guard<mutex> lock(printMutex);
+                cout << name << " [Guppy] at X=" << x << ", Y=" << y;
+                cout << "  [";
+                for (int i = 0; i < HEIGHT; i += 3) {
+                    if (i == y / 3) {
+                        cout << "F";
+                    } else {
+                        cout << ".";
+                    }
+                }
+                cout << "]" << endl;
+            }
+
+            y += directionY * SPEED;
+
+            if (y >= HEIGHT) {
+                y = HEIGHT;
+                directionY = -1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    cout << "  v " << name << " reached BOTTOM boundary!" << endl;
+                }
+            } else if (y <= 0) {
+                y = 0;
+                directionY = 1;
+                {
+                    lock_guard<mutex> lock(printMutex);
+                    cout << "  ^ " << name << " reached TOP boundary!" << endl;
+                }
+            }
+
+            this_thread::sleep_for(chrono::milliseconds(DELAY_MS));
+        }
+    }
+
+    void move() {
+        if (isGoldfish) {
+            moveGoldfish();
+        } else {
+            moveGuppy();
+        }
+    }
+
+    string getName() const { return name; }
+    int getX() const { return x; }
+    int getY() const { return y; }
+    bool isGoldFish() const { return isGoldfish; }
+};
+
+void printHeader() {
+    lock_guard<mutex> lock(printMutex);
+    cout << "==================================================" << endl;
+    cout << "       SIMULATION: FISH MOVEMENT (THREADED)       " << endl;
+    cout << "==================================================" << endl;
+    cout << "Area size: " << WIDTH << "x" << HEIGHT << endl;
+    cout << "Speed: " << SPEED << " unit per step" << endl;
+    cout << "Delay: " << DELAY_MS << " ms" << endl;
+    cout << "==================================================" << endl;
+}
+
+void printLegend() {
+    lock_guard<mutex> lock(printMutex);
+    cout << "\nLEGEND:" << endl;
+    cout << "Goldfish - moves along X axis" << endl;
+    cout << "Guppy    - moves along Y axis" << endl;
+    cout << "F - Fish position" << endl;
+    cout << ". - Empty space" << endl;
+    cout << "--------------------------------------------------" << endl;
+}
+
+int main() {
+    printHeader();
+    printLegend();
+
+    vector<Fish*> fishes;
+    
+    fishes.push_back(new Fish("Goldfish_1", 0, 5, 1, 0, true));
+    fishes.push_back(new Fish("Goldfish_2", WIDTH, 10, -1, 0, true));
+    fishes.push_back(new Fish("Goldfish_3", 50, 15, 1, 0, true));
+    
+    fishes.push_back(new Fish("Guppy_1", 20, 0, 0, 1, false));
+    fishes.push_back(new Fish("Guppy_2", 50, HEIGHT, 0, -1, false));
+    fishes.push_back(new Fish("Guppy_3", 80, 10, 0, 1, false));
+
+    vector<thread> threads;
+    for (auto& fish : fishes) {
+        threads.emplace_back(&Fish::move, fish);
+    }
+
+    {
+        lock_guard<mutex> lock(printMutex);
+        cout << "\nSimulation started! " << fishes.size() << " fish threads created." << endl;
+        cout << "Simulation will run for 10 seconds..." << endl;
+        cout << endl;
+    }
+
+    for (int i = 1; i <= 10; i++) {
+        this_thread::sleep_for(chrono::seconds(1));
+        
+        {
+            lock_guard<mutex> lock(printMutex);
+            cout << "\nSecond " << i << " of 10..." << endl;
+        }
+    }
+
+    running = false;
+    
+    {
+        lock_guard<mutex> lock(printMutex);
+        cout << "\n\nStopping simulation..." << endl;
+    }
+
+    for (auto& t : threads) {
+        if (t.joinable()) {
+            t.join();
+        }
+    }
+
+    {
+        lock_guard<mutex> lock(printMutex);
+        cout << "\n==================================================" << endl;
+        cout << "           FINAL REPORT               " << endl;
+        cout << "==================================================" << endl;
+        
+        cout << "\nFinal positions:" << endl;
+        for (const auto& fish : fishes) {
+            cout << fish->getName() << ": (";
+            cout << fish->getX() << ", " << fish->getY() << ")" << endl;
+        }
+        
+        cout << "\nSimulation completed!" << endl;
+        cout << "==================================================" << endl;
+    }
+
+    for (auto& fish : fishes) {
+        delete fish;
+    }
+
+    return 0;
+}
